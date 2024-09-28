@@ -1,0 +1,155 @@
+---
+title: "GWAS analysis bunt disease"
+author: "Pabitra"
+date: "2023-08-2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Normality test
+```{r}
+# Load the dataset
+data <- read.csv("phenonewfinalusethis.csv", header = TRUE)
+
+# Perform the Shapiro-Wilk test for normality on CB23 and CB24
+shapiro_cb23 <- shapiro.test(data$CB23)
+cat("Shapiro-Wilk test for CB23\n")
+cat("Test statistic:", shapiro_cb23$statistic, "\n")
+cat("p-value:", shapiro_cb23$p.value, "\n")
+
+shapiro_cb24 <- shapiro.test(data$CB24)
+cat("Shapiro-Wilk test for CB24\n")
+cat("Test statistic:", shapiro_cb24$statistic, "\n")
+cat("p-value:", shapiro_cb24$p.value, "\n")
+
+```
+
+
+##Normality test
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readxl)
+library(writexl)
+
+# Load the dataset
+data <- read.csv("phenonewfinalusethis.csv", header = TRUE)
+
+# Log transformation for CB23 and CB24
+log_transformed_data <- data %>%
+  mutate(across(-taxa, ~ log(. + 1)))  # Applying log transformation to all columns except 'taxa'
+
+# Save the transformed data
+write_xlsx(log_transformed_data, "CBGWAStransformed.xlsx")
+
+# Create histograms for original and transformed data
+hist(data$CB23, col = 'steelblue', main = 'Original CB23')
+hist(log_transformed_data$CB23, col = 'coral2', main = 'Log Transformed CB23')
+
+hist(data$CB24, col = 'steelblue', main = 'Original CB24')
+hist(log_transformed_data$CB24, col = 'coral2', main = 'Log Transformed CB24')
+
+# Perform the Shapiro-Wilk test on log-transformed data
+shapiro_cb23 <- shapiro.test(log_transformed_data$CB23)
+shapiro_cb24 <- shapiro.test(log_transformed_data$CB24)
+
+cat("Shapiro-Wilk test for log-transformed CB23\n")
+cat("Test statistic:", shapiro_cb23$statistic, "\n")
+cat("p-value:", shapiro_cb23$p.value, "\n")
+
+cat("Shapiro-Wilk test for log-transformed CB24\n")
+cat("Test statistic:", shapiro_cb24$statistic, "\n")
+cat("p-value:", shapiro_cb24$p.value, "\n")
+
+```
+
+##GWAS analysis
+```{r}
+
+# Clean the environment and set the seed
+rm(list = ls())
+set.seed(123)
+
+# Load necessary libraries
+library("bigmemory")
+library("biganalytics")
+library(lme4)
+library(reshape2)
+library(LDcorSV)
+library(rcompanion)
+library(compiler)
+
+# Load the phenotype and genotype data
+myY <- read.csv("phenonewfinalusethis.csv", header = TRUE)
+myG <- read.csv("GenoCBGWASusethis.csv", header = FALSE)
+
+# Filter markers with >20% missing data
+missing_rates <- colMeans(is.na(myG))
+valid_markers <- names(missing_rates)[missing_rates <= 0.2]
+filtered_myG <- myG[, valid_markers]
+
+# Check for duplicate markers or individuals
+duplicate_individuals <- myG[duplicated(myG$taxa) | duplicated(myG$taxa, fromLast = TRUE), ]
+duplicate_markers <- myG[, duplicated(myG)]
+
+cat("Number of duplicate individuals:", nrow(duplicate_individuals), "\n")
+cat("Number of duplicate markers:", sum(duplicate_markers), "\n")
+
+# Run GAPIT analysis
+library(GAPIT)
+myCV <- read.csv("Kmean.csv", header = TRUE)
+myKI <- read.csv("matrix.csv", header = FALSE)
+
+# Run GAPIT with the FARMCPU model
+myGAPIT <- GAPIT(
+  Y = myY[, c(1, 2)], 
+  G = myG, 
+  KI = myKI, 
+  CV = myCV,
+  Major.allele.zero = TRUE,
+  model = c("FARMCPU")
+)
+
+```
+
+###Visualization using rMVP
+```{r}
+
+# Install and load the rMVP package
+# install.packages("rMVP")
+library(rMVP)
+
+# Load results from GAPIT (example files)
+A1 <- read.csv("MLMCBspike.csv", header = TRUE)
+
+# Create Manhattan and QQ plots
+MVP.Report(A1, plot.type = "m", multracks = TRUE, threshold = 1e-3, threshold.lty = c(1, 2), 
+           threshold.lwd = c(1, 1), threshold.col = c("black", "grey"), signal.cex = c(1, 1), 
+           file.type = "jpg", memo = "", dpi = 300)
+
+MVP.Report(A1, plot.type = "q", multracks = TRUE, threshold = 1e3, signal.pch = 19, 
+           signal.cex = 1.5, signal.col = "red", box = FALSE, file.type = "jpg", memo = "", dpi = 300)
+
+```
+
+
+##Required Installation for pophelperShiny
+
+
+```{r}
+
+# Install dependencies and load pophelperShiny
+install.packages(c("ggplot2", "gridExtra", "label.switching", "tidyr", "remotes", "colourpicker", 
+                   "DT", "highcharter", "htmlwidgets", "magrittr", "markdown", "RColorBrewer", 
+                   "shiny", "shinyAce", "shinyBS", "shinythemes", "shinyWidgets", "viridisLite", "writexl"))
+remotes::install_github('royfrancis/pophelper')
+remotes::install_github('royfrancis/pophelperShiny')
+
+# Load and run pophelperShiny
+library(pophelperShiny)
+runPophelper()
+
+```
